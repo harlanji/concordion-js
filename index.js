@@ -1,36 +1,69 @@
+var Logger = require('js-logger');
 var markdown = require('markdown').markdown;
 var fs = require('fs');
 
+var logLevel = Logger[ (process.env["LOG_LEVEL"] || "warn").trim().toUpperCase() ] || Logger.WARN;
+Logger.setLevel(logLevel);
+
+var log = Logger.get("concordion-js");
+var transformNodeLog = Logger.get('concordion-js.transformNode');
+var transformLinkLog = Logger.get('concordion-js.transformLink');
+var resolveLog = Logger.get('concordion-js.resolve');
+var perfLog = Logger.get('concordion-js.perf');
+
+var consoleHandler = Logger.createDefaultHandler();
+var myHandler = function (messages, context) {
+    //jQuery.post('/logs', { message: messages[0], level: context.level });
+};
+
+Logger.setHandler(function (messages, context) {
+    consoleHandler(messages, context);
+    myHandler(messages, context);
+});
+
+perfLog.time('runtime');
+
 require('pegjs-require');
 
+perfLog.time('concordion-expr.pegjs');
 var cexpr = require('./concordion-expr.pegjs');
+perfLog.timeEnd('concordion-expr.pegjs');
 //var cexpr = require('./concordion-expr');
 
 
-var fixtureTemplate = fs.readFileSync('Main.md', 'utf8');
 
+
+perfLog.time('read .md');
+var fixtureTemplate = fs.readFileSync('Main.md', 'utf8');
+perfLog.timeEnd('read .md');
+
+perfLog.time('markdown.parse');
 var fixtureAst = markdown.parse(fixtureTemplate);
+perfLog.timeEnd('markdown.parse');
 
 console.log(JSON.stringify(fixtureAst));
 
 var env = {
 	split: function (str) {
-		console.log("split " + JSON.stringify(str));
+		log.debug("split " + JSON.stringify(str));
 		var parts = str.split(" "); 
 		return {firstName: parts[0], lastName: parts[1]};
 	}
 };
 
+perfLog.time('transformNode');
 var transformed = transformNode(env, fixtureAst);
+perfLog.timeEnd('transformNode');
 
+// program output
 console.log(JSON.stringify(transformed));
 
-console.log("env = " + JSON.stringify(env));
-
-
+log.debug("env = " + JSON.stringify(env));
 
 function resolve (env, cNode) {
-	console.log("resolve " + JSON.stringify(cNode));
+	log = resolveLog;
+
+	log.debug("resolve " + JSON.stringify(cNode));
 
 	if (cNode[0] == "Literal") {
 		return cNode[1];
@@ -40,12 +73,12 @@ function resolve (env, cNode) {
 		var propName = components.shift();
 		while (obj && propName) {
 			// todo handle missing properties
-			console.log("-- " + obj + "." + propName);
+			log.debug("-- " + obj + "." + propName);
 			obj = obj[propName];
 			propName = components.shift();
 		}
 
-		console.log("--> " + obj);
+		log.debug("--> " + obj);
 
 		return obj;
 	} else if (cNode[0] == "Function") {
@@ -58,9 +91,9 @@ function resolve (env, cNode) {
 			nextArg = nextArg[1];
 		}
 
-		console.log("Call fn " + fn + " with args " + JSON.stringify(args));
+		log.debug("Call fn " + fn + " with args " + JSON.stringify(args));
 		var result = fn.apply(null, args);
-		console.log("Called fn result = " + result);
+		log.debug("Called fn result = " + result);
 
 		return result;
 	} else {
@@ -68,7 +101,11 @@ function resolve (env, cNode) {
 	}
 }
 
+
+
 function transformLink (env, node) {
+	var log = transformLinkLog;
+
 	var href = node[1].href;
 	var title = node[1].title;
 	var label = node[2];
@@ -80,7 +117,7 @@ function transformLink (env, node) {
 	if (cNode[0] == "LocalVariable") {
 		var varName = cNode[1];
 		var varVal = label.trim();
-		console.log("Assign local variable from label: " + varName + " to " + JSON.stringify(varVal));
+		log.debug("Assign local variable from label: " + varName + " to " + JSON.stringify(varVal));
 
 		env[varName] = varVal;
 	}
@@ -89,18 +126,18 @@ function transformLink (env, node) {
 		var varName = cNode[1][1];
 		var val = resolve(env, cNode[2]);
 
-		console.log("Assign local variable " + varName + " to '" + val + "'");
+		log.debug("Assign local variable " + varName + " to '" + val + "'");
 		env[varName] = val;
 	}
 
 	if (cNode[0] == "AssertEqual") {
-		console.log("AssertEqual " + JSON.stringify(cNode));
+		log.debug("AssertEqual " + JSON.stringify(cNode));
 		var expected = label;
 		var actual = resolve(env, cNode[1]);
 
 		var truth = actual == expected;
 
-		console.log("Assert equals... expect " + expected + " = " + actual + "... true? " + truth);
+		log.debug("Assert equals... expect " + expected + " = " + actual + "... true? " + truth);
 		
 		return ["AssertEqual", expected, actual, truth];
 	}
@@ -110,6 +147,7 @@ function transformLink (env, node) {
 
 
 function transformNode (env, node) {
+	var log = transformNodeLog;
 	var result = node;
 
 	if (!Array.isArray(node)) { return node; }
@@ -124,3 +162,5 @@ function transformNode (env, node) {
 
 	return result;
 }
+
+perfLog.timeEnd('runtime');
