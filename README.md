@@ -60,3 +60,9 @@ Run it with configurable log level.
 [concordion-js.resolve] env = {"name":"Jane Smith","result":{"firstName":"Jane","lastName":"Smith"}}
 [concordion-js.perf] runtime: 132ms
 ```
+
+
+### Ideas for Improvments
+
+1. Transform MD to Hiccup (HTML+ns vector) intermediate and then process that as Concordion expressions -- would allow HTML compat and easy mapping to HTML for other formats.
+2. Separate parsing and processing steps
